@@ -51,6 +51,7 @@ Requiere Node.js 22.13 o superior.
 cd licitaciones
 npm install
 npm run crear-admin          # crea tu usuario y muestra un QR para tu app de autenticación
+                             # (o define SETUP_TOKEN y créalo desde el navegador)
 COOKIE_SECURE=false npm start
 ```
 
@@ -59,7 +60,20 @@ Abre <http://localhost:3000>. Para probar desde el celular en la misma red Wi-Fi
 
 Pruebas automáticas: `npm test`
 
-## Publicarlo para usarlo desde cualquier lugar
+## Tenerla en tu celular (paso a paso con Render)
+
+1. Crea una cuenta en <https://render.com> (puedes entrar con tu GitHub).
+2. En Render: **New → Blueprint** → elige el repositorio `juego-secreto` y la rama donde está la app.
+   Render lee el archivo `render.yaml` y lo configura todo solo (servidor, HTTPS y disco).
+3. Cuando termine, entra al servicio **licitapp → Environment** y copia el valor de `SETUP_TOKEN`.
+4. En tu celular abre la dirección `https://licitapp-xxxx.onrender.com` que te da Render.
+5. Verás **Configuración inicial**: pega el `SETUP_TOKEN`, pon tu nombre, correo y contraseña,
+   toca **“Abrir en mi app de autenticación”** y escribe el código de 6 dígitos.
+6. En el menú del navegador toca **“Agregar a pantalla de inicio”**. Ya tienes el ícono de LicitApp.
+7. En el Panel toca **“Activar notificaciones en este celular”**.
+8. Comparte la dirección con tus postores para que se registren; tú los apruebas desde el Panel.
+
+## Publicarlo en otro proveedor
 
 La app necesita un servidor que se mantenga encendido (por el tiempo real) y un **disco persistente**
 para la base de datos. Funciona en Render, Railway, Fly.io o cualquier VPS. (No sirve un hosting

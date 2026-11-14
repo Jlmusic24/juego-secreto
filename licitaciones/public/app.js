@@ -169,6 +169,58 @@
   }
 
   // ---------- Vistas: acceso ----------
+  function renderSetup() {
+    const msg = el('p', { class: 'msg' });
+    const step2 = el('div', { class: 'form', hidden: true });
+    const form = el('form', { class: 'card form', novalidate: true },
+      el('h1', {}, 'Configuración inicial'),
+      el('p', { class: 'muted' }, 'Crea tu cuenta de administrador. Solo se puede hacer una vez.'),
+      el('label', {}, 'Código de configuración (SETUP_TOKEN)', el('input', { name: 'token', autocomplete: 'off', required: true })),
+      el('label', {}, 'Tu nombre', el('input', { name: 'name', autocomplete: 'name', required: true })),
+      el('label', {}, 'Correo', el('input', { name: 'email', type: 'email', autocomplete: 'username', required: true })),
+      el('label', {}, 'Contraseña (mín. 12 caracteres)', el('input', { name: 'password', type: 'password', autocomplete: 'new-password', required: true, minlength: 12 })),
+      el('button', { class: 'btn primary', type: 'button', id: 'gen2fa' }, 'Siguiente: activar verificación en 2 pasos'),
+      step2,
+      msg,
+    );
+    const values = () => Object.fromEntries(new FormData(form));
+    const fail = (err) => { msg.textContent = err.message; msg.className = 'msg error'; };
+    form.querySelector('#gen2fa').addEventListener('click', async () => {
+      msg.textContent = '';
+      const v = values();
+      if (!v.token || !v.name || !v.email || !v.password) return fail(new Error('Completa todos los campos'));
+      try {
+        const r = await api('/setup/secret', { method: 'POST', body: { token: v.token, email: v.email } });
+        form.querySelector('#gen2fa').hidden = true;
+        step2.hidden = false;
+        step2.replaceChildren(
+          el('h2', {}, 'Verificación en 2 pasos'),
+          el('p', { class: 'small' }, '1. Instala Google Authenticator, Microsoft Authenticator o Authy.'),
+          el('a', { class: 'btn ghost', href: r.uri }, '📲 Abrir en mi app de autenticación'),
+          el('p', { class: 'small muted' }, 'Si el botón no funciona, agrega una cuenta manualmente con esta clave:'),
+          el('code', { class: 'secret' }, r.secret.match(/.{1,4}/g).join(' ')),
+          el('p', { class: 'small muted' }, 'O escanea este QR desde otro dispositivo:'),
+          el('img', { src: r.qr, alt: 'Código QR para la app de autenticación', width: 200, height: 200, class: 'qr' }),
+          el('label', {}, '2. Escribe el código de 6 dígitos que muestra la app',
+            el('input', { name: 'totp', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 6, required: true })),
+          el('button', { class: 'btn primary', type: 'submit' }, 'Crear administrador'),
+        );
+      } catch (err) { fail(err); }
+    });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const v = values();
+      try {
+        await api('/setup/complete', { method: 'POST', body: v });
+        await loadMe();
+        toast('¡Administrador creado! Guarda bien tu contraseña.', 'ok');
+        location.hash = '#/admin';
+        route();
+      } catch (err) { fail(err); }
+    });
+    $view.replaceChildren(form);
+  }
+
   function renderLogin() {
     let needTotp = false;
     const msg = el('p', { class: 'msg' });
@@ -559,6 +611,8 @@
     const hash = location.hash || '#/';
     if (!state.user) {
       renderNav();
+      const setup = await api('/setup/status').catch(() => ({ needed: false }));
+      if (setup.needed) return renderSetup();
       return hash === '#/registro' ? renderRegister() : renderLogin();
     }
     renderNav();

@@ -388,6 +388,73 @@ function createApp(options = {}) {
     res.json({ ok: true });
   });
 
+  // ----- Configuración inicial desde el navegador (solo mientras no exista administrador) -----
+  // Requiere SETUP_TOKEN (mín. 16 caracteres) definido en el servidor. Una vez creado el
+  // administrador, estas rutas dejan de funcionar para siempre.
+  const setupLimiter = sec.createRateLimiter({ windowMs: 15 * 60 * 1000, max: 15 });
+  let pendingSetupSecret = null;
+  const setupToken = options.setupToken ?? process.env.SETUP_TOKEN ?? '';
+  const adminExists = () => !!db.prepare("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").get();
+  function checkSetup(req) {
+    if (adminExists() || setupToken.length < 16) throw new HttpError(404, 'Ruta no encontrada');
+    if (!setupLimiter(req.ip).allowed) throw new HttpError(429, 'Demasiados intentos. Prueba más tarde.');
+    const given = Buffer.from(String(body(req).token || ''));
+    const expected = Buffer.from(setupToken);
+    if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) {
+      audit.log(null, 'setup.token_invalido', { ip: req.ip });
+      throw new HttpError(403, 'Código de configuración incorrecto');
+    }
+  }
+
+  api.get('/setup/status', (req, res) => {
+    res.json({ needed: !adminExists() && setupToken.length >= 16 });
+  });
+
+  api.post('/setup/secret', async (req, res) => {
+    checkSetup(req);
+    const email = str(body(req).email, 'email', { max: 254 }).toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Correo inválido');
+    pendingSetupSecret = sec.generateTotpSecret();
+    const uri = sec.otpauthUri(pendingSetupSecret, email);
+    const qr = await require('qrcode').toDataURL(uri, { margin: 1, width: 240 });
+    res.json({ secret: pendingSetupSecret, uri, qr });
+  });
+
+  api.post('/setup/complete', async (req, res) => {
+    checkSetup(req);
+    const b = body(req);
+    if (!pendingSetupSecret) throw new HttpError(409, 'Primero genera el código 2FA');
+    const email = str(b.email, 'email', { max: 254 }).toLowerCase();
+    if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Correo inválido');
+    const name = str(b.name, 'nombre', { min: 2, max: 80 });
+    if (typeof b.password !== 'string' || b.password.length < 12) {
+      throw new HttpError(400, 'Para el administrador usa al menos 12 caracteres');
+    }
+    const pwErr = sec.validatePasswordStrength(b.password);
+    if (pwErr) throw new HttpError(400, pwErr);
+    const counter = sec.verifyTotp(pendingSetupSecret, b.totp, 0);
+    if (counter === null) throw new HttpError(400, 'El código de 6 dígitos no coincide. Revisa la hora del celular.');
+    const hash = await sec.hashPassword(b.password);
+    const userId = tx(db, () => {
+      if (adminExists()) throw new HttpError(409, 'El administrador ya existe');
+      const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      if (existing) {
+        db.prepare(`UPDATE users SET name = ?, password_hash = ?, role = 'admin', status = 'active', totp_secret = ?,
+          totp_last_counter = ?, failed_logins = 0, locked_until = 0 WHERE id = ?`)
+          .run(name, hash, pendingSetupSecret, counter, existing.id);
+        db.prepare('DELETE FROM sessions WHERE user_id = ?').run(existing.id);
+        return existing.id;
+      }
+      const r = db.prepare(`INSERT INTO users (email, name, password_hash, role, status, totp_secret, totp_last_counter, created_at)
+        VALUES (?, ?, ?, 'admin', 'active', ?, ?, ?)`).run(email, name, hash, pendingSetupSecret, counter, Date.now());
+      return Number(r.lastInsertRowid);
+    });
+    pendingSetupSecret = null;
+    audit.log(userId, 'setup.admin_creado', { email, ip: req.ip });
+    setSessionCookie(res, createSession(userId, req));
+    res.status(201).json({ ok: true });
+  });
+
   api.get('/me', (req, res) => {
     if (!req.user) return res.json({ user: null });
     const { sessionHash, ...user } = req.user;

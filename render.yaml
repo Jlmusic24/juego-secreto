@@ -1,0 +1,30 @@
+# Despliegue en Render con un clic (Blueprint).
+# Render → New → Blueprint → elige este repositorio.
+services:
+  - type: web
+    name: licitapp
+    runtime: node
+    rootDir: licitaciones
+    plan: starter            # el disco persistente requiere un plan de pago
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/setup/status
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: FORCE_HTTPS
+        value: "true"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DB_PATH
+        value: /var/data/licitapp.db
+      - key: APP_SECRET
+        generateValue: true
+      - key: SETUP_TOKEN       # código para crear tu administrador desde el celular
+        generateValue: true
+    disk:
+      name: datos
+      mountPath: /var/data
+      sizeGB: 1

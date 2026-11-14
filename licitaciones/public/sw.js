@@ -1,6 +1,6 @@
 // Service worker: guarda la "cáscara" de la app para que cargue rápido en el celular.
 // Nunca guarda en caché la API ni el canal en tiempo real (datos siempre frescos).
-const CACHE = 'licitapp-v1';
+const CACHE = 'licitapp-v2';
 const SHELL = ['/', '/index.html', '/styles.css', '/app.js', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

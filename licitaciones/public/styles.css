@@ -131,3 +131,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); o
 @media (min-width: 640px) {
   .stats { grid-template-columns: repeat(5, 1fr); }
 }
+
+.secret { display: block; font-size: 18px; letter-spacing: 1px; background: #f1f4f9; padding: 10px; border-radius: 8px; word-break: break-all; user-select: all; }
+.qr { align-self: center; border-radius: 8px; }
